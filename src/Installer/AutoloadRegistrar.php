@@ -123,7 +123,12 @@ final class AutoloadRegistrar
             }
 
             if (!in_array(self::SCRIPT_COMMAND, $composer['scripts'][$event], true)) {
-                $composer['scripts'][$event][] = self::SCRIPT_COMMAND;
+                // Prepend, not append: other scripts in this list (e.g. Symfony Flex's
+                // "@auto-scripts", which runs cache:clear) may reflect application classes
+                // that reference generated client classes (e.g. an enum used in a class
+                // constant). On a fresh checkout (empty var/), those classes don't exist yet
+                // until this command runs, so it must run first.
+                array_unshift($composer['scripts'][$event], self::SCRIPT_COMMAND);
                 $changed = true;
             }
         }
