@@ -63,9 +63,15 @@ final class AutoloadRegistrar
     }
 
     /**
-     * Adds/updates the PSR-4 mapping(s) for this client on the project's own composer.json.
+     * Adds/updates the PSR-4 mapping(s) for this client on the project's own composer.json, and
+     * merges the generated client's own package dependencies (e.g. guzzlehttp/guzzle) into the
+     * project's "require" - the generated code is never installed as a real Composer package
+     * itself, so nothing else would ever cause Composer to install what it depends on.
+     *
+     * @return string[] package names newly added to "require" (not already present), to
+     *                   install in finalize().
      */
-    public function registerAutoload(string $projectRoot, string $generatedDir, SymfonyStyle $io): void
+    public function registerAutoload(string $projectRoot, string $generatedDir, SymfonyStyle $io): array
     {
         $generatedComposerJsonPath = $generatedDir.'/composer.json';
         $generatedComposerJson = $this->readJson($generatedComposerJsonPath);
@@ -97,7 +103,33 @@ final class AutoloadRegistrar
             $io->text(sprintf('Registered "%s" -> %s in composer.json autoload.psr-4.', $namespace, $target));
         }
 
+        $newlyRequired = [];
+        $clientDependencies = $generatedComposerJson['require'] ?? [];
+        if (is_array($clientDependencies)) {
+            $composer['require'] ??= [];
+            foreach ($clientDependencies as $dependencyName => $constraint) {
+                // Skip "php" and "ext-*" platform requirements: merging those could tighten
+                // the project's own PHP/extension constraints unexpectedly. Only real Composer
+                // packages (vendor/project form) need to actually be installed here.
+                if (!is_string($dependencyName) || !str_contains($dependencyName, '/')) {
+                    continue;
+                }
+
+                if (!array_key_exists($dependencyName, $composer['require'])) {
+                    $composer['require'][$dependencyName] = $constraint;
+                    $newlyRequired[] = $dependencyName;
+                    $io->text(sprintf(
+                        'Added "%s" (%s) to composer.json require - the generated client depends on it.',
+                        $dependencyName,
+                        $constraint
+                    ));
+                }
+            }
+        }
+
         $this->writeJson($composerJsonPath, $composer);
+
+        return $newlyRequired;
     }
 
     /**
@@ -144,18 +176,33 @@ final class AutoloadRegistrar
 
     /**
      * Runs composer exactly once for the whole batch: removes any conflicting foreign packages,
+     * installs any new package(s) the generated client(s) depend on (e.g. guzzlehttp/guzzle),
      * then dumps the autoloader so the newly registered PSR-4 mappings take effect immediately.
-     * Unlike installing a vendor/ package, this needs no network access and no dependency
+     * When no new dependency needs installing, this needs no network access and no dependency
      * resolution, so it stays fast regardless of how many clients were (re)generated.
      *
      * @param string[] $packagesToRemove
+     * @param string[] $packagesToInstall
      */
-    public function finalize(string $projectRoot, array $packagesToRemove, SymfonyStyle $io, bool $noScripts = false): void
-    {
+    public function finalize(
+        string $projectRoot,
+        array $packagesToRemove,
+        array $packagesToInstall,
+        SymfonyStyle $io,
+        bool $noScripts = false,
+    ): void {
         $packagesToRemove = array_values(array_unique($packagesToRemove));
         if ($packagesToRemove !== []) {
             $args = array_merge(['remove'], $packagesToRemove, $noScripts ? ['--no-scripts'] : [], ['--no-interaction']);
             $this->runComposer($projectRoot, $args, $io);
+        }
+
+        $packagesToInstall = array_values(array_unique($packagesToInstall));
+        if ($packagesToInstall !== []) {
+            $args = array_merge(['update'], $packagesToInstall, ['--optimize-autoloader', '--no-interaction']);
+            $this->runComposer($projectRoot, $args, $io);
+
+            return;
         }
 
         $this->runComposer($projectRoot, ['dump-autoload', '--optimize', '--no-interaction'], $io);

@@ -82,6 +82,7 @@ final class GenerateClientCommand extends Command
             $skipInstall = (bool) $input->getOption('skip-install');
 
             $packagesToRemove = [];
+            $packagesToInstall = [];
             $anyClientProcessed = false;
 
             foreach ($clients as $client) {
@@ -116,7 +117,10 @@ final class GenerateClientCommand extends Command
                         $packagesToRemove,
                         $registrar->prepare($projectRoot, $outputDir, $io)
                     );
-                    $registrar->registerAutoload($projectRoot, $outputDir, $io);
+                    $packagesToInstall = array_merge(
+                        $packagesToInstall,
+                        $registrar->registerAutoload($projectRoot, $outputDir, $io)
+                    );
                     $anyClientProcessed = true;
                 }
 
@@ -126,7 +130,13 @@ final class GenerateClientCommand extends Command
             if (!$skipInstall && $anyClientProcessed) {
                 $io->section('Updating autoload');
                 $registrar->ensureScriptsRegistered($projectRoot, $io);
-                $registrar->finalize($projectRoot, $packagesToRemove, $io, (bool) $input->getOption('no-scripts'));
+                $registrar->finalize(
+                    $projectRoot,
+                    $packagesToRemove,
+                    $packagesToInstall,
+                    $io,
+                    (bool) $input->getOption('no-scripts')
+                );
             }
 
             $io->success(sprintf('Done in %s.', $this->formatElapsed($startedAt)));
