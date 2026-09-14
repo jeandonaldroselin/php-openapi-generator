@@ -68,10 +68,18 @@ final class AutoloadRegistrar
      * project's "require" - the generated code is never installed as a real Composer package
      * itself, so nothing else would ever cause Composer to install what it depends on.
      *
+     * @param string[] $previousNamespaces PSR-4 namespace(s) this same client's composer.json
+     *                                     declared before this run (e.g. before an
+     *                                     `invokerPackage` change was applied). Any of these no
+     *                                     longer present in the freshly generated mapping are
+     *                                     removed from the project's composer.json first, so a
+     *                                     renamed/reverted namespace doesn't leave a stale,
+     *                                     permanently-dead autoload entry behind.
+     *
      * @return string[] package names newly added to "require" (not already present), to
      *                   install in finalize().
      */
-    public function registerAutoload(string $projectRoot, string $generatedDir, SymfonyStyle $io): array
+    public function registerAutoload(string $projectRoot, string $generatedDir, SymfonyStyle $io, array $previousNamespaces = []): array
     {
         $generatedComposerJsonPath = $generatedDir.'/composer.json';
         $generatedComposerJson = $this->readJson($generatedComposerJsonPath);
@@ -95,6 +103,21 @@ final class AutoloadRegistrar
 
         $composer['autoload'] ??= [];
         $composer['autoload']['psr-4'] ??= [];
+
+        $newNamespaces = array_keys($psr4);
+        foreach ($previousNamespaces as $staleNamespace) {
+            if (in_array($staleNamespace, $newNamespaces, true)) {
+                continue;
+            }
+
+            if (array_key_exists($staleNamespace, $composer['autoload']['psr-4'])) {
+                unset($composer['autoload']['psr-4'][$staleNamespace]);
+                $io->text(sprintf(
+                    'Removed stale "%s" from composer.json autoload.psr-4 (no longer produced by this client).',
+                    $staleNamespace
+                ));
+            }
+        }
 
         foreach ($psr4 as $namespace => $subPath) {
             $target = $this->relativePath($projectRoot, $generatedDir.'/'.$subPath);

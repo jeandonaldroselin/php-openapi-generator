@@ -19,10 +19,16 @@ final class ClientGenerator
     private const GENERATION_CONFIG_RELATIVE_PATH = '.openapi-generator/generation-config.json';
 
     /**
-     * @return bool true if the client was (re)generated, false if generation was skipped
-     *              because neither the OpenAPI spec nor the generation config (generator_name,
+     * @return array{regenerated: bool, previousNamespaces: array<int,string>} "regenerated" is
+     *              true if the client was (re)generated, false if generation was skipped because
+     *              neither the OpenAPI spec nor the generation config (generator_name,
      *              openapi_generator_version, additional_properties, global_properties) have
-     *              functionally changed since last time.
+     *              functionally changed since last time. "previousNamespaces" lists the PSR-4
+     *              namespace(s) the client's composer.json declared *before* this run (e.g.
+     *              before its output directory gets wiped for regeneration) - callers use this
+     *              to remove any now-stale autoload mapping (e.g. after an `invokerPackage`
+     *              change) from the consuming project's own composer.json. Empty when generation
+     *              was skipped, since nothing changed.
      */
     public function generate(
         ClientDefinition $client,
@@ -32,7 +38,7 @@ final class ClientGenerator
         string $javaBinary,
         SymfonyStyle $io,
         bool $forceRegenerate = false,
-    ): bool {
+    ): array {
         $snapshotPath = $outputDir.'/'.self::SPEC_SNAPSHOT_RELATIVE_PATH;
         $generationConfigPath = $outputDir.'/'.self::GENERATION_CONFIG_RELATIVE_PATH;
         $currentGenerationConfig = $this->buildGenerationConfig($client, $version);
@@ -57,8 +63,10 @@ final class ClientGenerator
                 $outputDir
             ));
 
-            return false;
+            return ['regenerated' => false, 'previousNamespaces' => []];
         }
+
+        $previousNamespaces = $this->readPsr4Namespaces($outputDir.'/composer.json');
 
         (new Filesystem())->remove($outputDir);
 
@@ -119,7 +127,32 @@ final class ClientGenerator
         }
         $this->storeJson($currentGenerationConfig, $generationConfigPath);
 
-        return true;
+        return ['regenerated' => true, 'previousNamespaces' => $previousNamespaces];
+    }
+
+    /**
+     * Reads the PSR-4 namespace key(s) a previously generated client's composer.json declared,
+     * if any - used to detect/clean up a now-stale autoload mapping (e.g. after an
+     * `invokerPackage` change) before it gets overwritten by regeneration.
+     *
+     * @return array<int,string>
+     */
+    private function readPsr4Namespaces(string $composerJsonPath): array
+    {
+        if (!is_file($composerJsonPath)) {
+            return [];
+        }
+
+        $raw = file_get_contents($composerJsonPath);
+        if ($raw === false) {
+            return [];
+        }
+
+        /** @var mixed $decoded */
+        $decoded = json_decode($raw, true);
+        $psr4 = is_array($decoded) ? ($decoded['autoload']['psr-4'] ?? null) : null;
+
+        return is_array($psr4) ? array_keys($psr4) : [];
     }
 
     /**

@@ -178,6 +178,17 @@ the spec itself, or a setting like `removeOperationIdPrefix` in `additional_prop
 `openapi_generator_version` - the client is regenerated. Use `--force` (`-f`) to regenerate
 regardless.
 
+## Stale autoload cleanup
+
+If a client's `additional_properties.invokerPackage` (or anything else that changes the PHP
+namespace it generates) is edited and later reverted, the *old* namespace's `autoload.psr-4`
+mapping would otherwise linger forever in the project's `composer.json` - it was added on a
+previous run, and nothing about registering the *new* mapping would remove it. Before overwriting
+a client's output directory, `generate-client` reads the namespace(s) its composer.json currently
+declares and, once the client has been regenerated, removes any of those old namespace(s) from the
+project's `composer.json` that are no longer part of the freshly generated mapping - then adds the
+current one(s) as usual. No manual cleanup needed.
+
 ## Namespace conflict detection
 
 Before registering a client's autoload mapping, generate-client checks whether a package already

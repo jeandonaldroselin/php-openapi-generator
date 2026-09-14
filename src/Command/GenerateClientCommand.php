@@ -103,7 +103,7 @@ final class GenerateClientCommand extends Command
                     ? $this->resolvePath($projectRoot, $client->generatedPath)
                     : $symfonyConfig->generatedDir.'/'.$client->name;
 
-                $generator->generate(
+                $generationResult = $generator->generate(
                     $client,
                     $jarPath,
                     $version,
@@ -122,7 +122,12 @@ final class GenerateClientCommand extends Command
                     );
                     $packagesToInstall = array_merge(
                         $packagesToInstall,
-                        $registrar->registerAutoload($projectRoot, $outputDir, $io)
+                        $registrar->registerAutoload(
+                            $projectRoot,
+                            $outputDir,
+                            $io,
+                            $generationResult['previousNamespaces']
+                        )
                     );
                     $anyClientProcessed = true;
                 }
