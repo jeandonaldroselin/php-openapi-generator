@@ -76,11 +76,82 @@ A single client can also be declared without the `clients` wrapper (top-level ob
 | `name`                       | yes      | Identifier, used for `--client` filtering and the output subfolder.  |
 | `input_spec`                 | yes      | Path or URL to the OpenAPI spec.                                     |
 | `package_name`                | yes      | Cosmetic identifier written into the generated composer.json's `name` field (`vendor/project` form). Not installed as a real dependency. |
-| `generator_name`              | no       | openapi-generator generator, default `php`.                          |
-| `openapi_generator_version`   | no       | Overrides the default generator version for this client.             |
-| `additional_properties`       | no       | Passed as `--additional-properties` to the generator. `invokerPackage` determines the PHP namespace that gets autoloaded. |
+| `generator_name`              | no       | openapi-generator generator, default `php`. Can be set at the root, see below. |
+| `openapi_generator_version`   | no       | Overrides the default generator version for this client. Can be set at the root, see below. |
+| `additional_properties`       | no       | Passed as `--additional-properties` to the generator. `invokerPackage` determines the PHP namespace that gets autoloaded. Can be set at the root, see below. |
 | `global_properties`           | no       | Passed as `--global-property` to the generator.                      |
 | `package_version`             | no       | Version written to the generated composer.json. Defaults to the spec's `info.version` (for a local file), else `1.0.0`. |
+| `generated_path`              | no       | Where this client is generated, instead of `var/openapi-generator/generated/<name>`. Can be set at the root, see below. |
+
+## Root-level defaults
+
+`generator_name`, `openapi_generator_version`, `additional_properties` and `generated_path` can
+also be set at the **root** of the config file, alongside `clients`, to apply to every client by
+default:
+
+```json
+{
+    "openapi_generator_version": "7.9.0",
+    "generator_name": "php",
+    "additional_properties": {
+        "removeOperationIdPrefix": "true"
+    },
+    "clients": [
+        {
+            "name": "billing",
+            "input_spec": "https://api.example.com/billing/openapi.yaml",
+            "package_name": "acme/billing-client",
+            "additional_properties": {
+                "invokerPackage": "Acme\\Billing\\Client"
+            }
+        },
+        {
+            "name": "shipping",
+            "input_spec": "https://api.example.com/shipping/openapi.yaml",
+            "package_name": "acme/shipping-client",
+            "openapi_generator_version": "7.10.0",
+            "additional_properties": {
+                "invokerPackage": "Acme\\Shipping\\Client"
+            }
+        }
+    ]
+}
+```
+
+A value set on a client always wins over the root default for that same client:
+
+- `generator_name` / `openapi_generator_version`: the client's own value replaces the root one
+  entirely (`shipping` above uses `7.10.0`, `billing` falls back to the root's `7.9.0`).
+- `additional_properties`: merged key by key, not replaced wholesale — a client only needs to set
+  the properties it wants to override, and still inherits every other root property. Above, both
+  clients end up with `removeOperationIdPrefix: "true"` from the root, each combined with their
+  own `invokerPackage`.
+- `generated_path`: see below - a root default becomes `<root generated_path>/<client name>` for
+  each client, not a literal shared path.
+
+## Changing where clients are generated
+
+By default every client is generated into `var/openapi-generator/generated/<name>/`. Set
+`generated_path` to change that:
+
+- On a **client**, it's used verbatim as that client's output directory (relative to the project
+  root, or absolute).
+- At the **root**, it replaces the `var/openapi-generator/generated` base: each client still gets
+  its own `<generated_path>/<name>` subdirectory, unless that client sets its own `generated_path`
+  (which is then used as-is, taking full precedence).
+
+```json
+{
+    "generated_path": "src/Generated",
+    "clients": [
+        { "name": "billing", "...": "..." },
+        { "name": "shipping", "generated_path": "var/one-off/shipping", "...": "..." }
+    ]
+}
+```
+
+Here `billing` is generated into `src/Generated/billing/`, while `shipping` goes to the fully
+custom `var/one-off/shipping/` instead.
 
 ## Generated composer.json
 
@@ -175,8 +246,18 @@ use Acme\Billing\Client\Api\InvoicesApi;
 
 Java is required wherever `composer install`/`update` runs for this project. If you want to keep
 Java out of your final runtime image, use a multi-stage build: run `composer install` (which
-triggers generation via the registered script) in a builder stage that has Java, then copy just
-`vendor/` (and, if you `--no-dev`-prune the builder afterward, run that second `composer install
---no-dev --no-scripts` pass specifically with `--no-scripts` — otherwise the post-install-cmd
-script would try to run after `vendor/bin/generate-client` has already been removed by the `--no-dev`
-prune) into a Java-less final stage.
+triggers generation via the registered script) in a builder stage that has Java, then copy
+**both** `vendor/` and `var/openapi-generator/` (or wherever your `generated_path` points) into a
+Java-less final stage — the generated code lives there, not in `vendor/`, so both are needed for
+the autoload mapping to resolve at runtime.
+
+Two other things commonly needed in that builder stage, unrelated to this tool but easy to miss:
+- `.env` is often excluded from the build context (`.dockerignore`); if your project's own
+  `bin/console`/Symfony Runtime requires it to exist, `touch .env` before running `composer
+  install` so it doesn't crash on boot.
+- If your project runs cache-warming scripts (e.g. Symfony Flex's `@auto-scripts` /
+  `cache:clear`) alongside `@php vendor/bin/generate-client` in `post-install-cmd`, make sure
+  `generate-client` is listed **first** — this tool always prepends itself for exactly this
+  reason, but double-check if you've reordered scripts by hand. A DSN env var like
+  `DATABASE_URL` may also need a syntactically valid placeholder value at build time for
+  `cache:clear` to succeed.

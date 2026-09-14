@@ -99,7 +99,9 @@ final class GenerateClientCommand extends Command
                     (bool) $input->getOption('force-download')
                 );
 
-                $outputDir = $symfonyConfig->generatedDir.'/'.$client->name;
+                $outputDir = $client->generatedPath !== null
+                    ? $this->resolvePath($projectRoot, $client->generatedPath)
+                    : $symfonyConfig->generatedDir.'/'.$client->name;
 
                 $generator->generate(
                     $client,
@@ -147,6 +149,15 @@ final class GenerateClientCommand extends Command
 
             return Command::FAILURE;
         }
+    }
+
+    private function resolvePath(string $projectRoot, string $path): string
+    {
+        if (str_starts_with($path, '/') || preg_match('#^[A-Za-z]:[\\\\/]#', $path) === 1) {
+            return $path;
+        }
+
+        return $projectRoot.'/'.$path;
     }
 
     private function formatElapsed(int $startedAt): string

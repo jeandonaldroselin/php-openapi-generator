@@ -37,17 +37,20 @@ final class PackageConfigLoader
             throw new RuntimeException(sprintf('Configuration file is not valid JSON: %s', $configPath));
         }
 
-        // Allow either a single client definition at the top level, or a "clients" array.
-        $clientsData = isset($decoded['clients']) && is_array($decoded['clients'])
-            ? $decoded['clients']
-            : [$decoded];
+        // Allow either a single client definition at the top level, or a "clients" array
+        // alongside root-level defaults (generator_name, openapi_generator_version,
+        // additional_properties, generated_path) inherited by every client, unless a client
+        // sets its own value for that same key.
+        $hasClientsWrapper = isset($decoded['clients']) && is_array($decoded['clients']);
+        $clientsData = $hasClientsWrapper ? $decoded['clients'] : [$decoded];
+        $rootDefaults = $hasClientsWrapper ? $decoded : [];
 
         $clients = [];
         foreach ($clientsData as $clientData) {
             if (!is_array($clientData)) {
                 continue;
             }
-            $clients[] = ClientDefinition::fromArray($clientData);
+            $clients[] = ClientDefinition::fromArray(self::mergeWithRootDefaults($rootDefaults, $clientData));
         }
 
         if ($clients === []) {
@@ -55,5 +58,46 @@ final class PackageConfigLoader
         }
 
         return $clients;
+    }
+
+    /**
+     * @param array<string,mixed> $rootDefaults
+     * @param array<string,mixed> $clientData
+     * @return array<string,mixed>
+     */
+    private static function mergeWithRootDefaults(array $rootDefaults, array $clientData): array
+    {
+        // Scalar settings: the client's own value wins if set, otherwise fall back to the
+        // root default.
+        foreach (['generator_name', 'openapi_generator_version'] as $key) {
+            if (!array_key_exists($key, $clientData) && array_key_exists($key, $rootDefaults)) {
+                $clientData[$key] = $rootDefaults[$key];
+            }
+        }
+
+        // generated_path is a base directory, not a literal path to reuse as-is: a root-level
+        // default gives each client its own "<root generated_path>/<client name>" subdirectory,
+        // same as the built-in default (var/openapi-generator/generated/<name>) - unless the
+        // client sets its own generated_path, which is then used verbatim.
+        if (!array_key_exists('generated_path', $clientData)
+            && isset($rootDefaults['generated_path'])
+            && is_string($rootDefaults['generated_path'])
+            && isset($clientData['name'])
+        ) {
+            $clientData['generated_path'] = rtrim($rootDefaults['generated_path'], '/').'/'.$clientData['name'];
+        }
+
+        // additional_properties merges key by key: a property set on the client overrides the
+        // same property from the root default, but other root properties still apply.
+        $rootAdditionalProperties = $rootDefaults['additional_properties'] ?? [];
+        if (is_array($rootAdditionalProperties) && $rootAdditionalProperties !== []) {
+            $clientAdditionalProperties = $clientData['additional_properties'] ?? [];
+            $clientData['additional_properties'] = array_merge(
+                $rootAdditionalProperties,
+                is_array($clientAdditionalProperties) ? $clientAdditionalProperties : []
+            );
+        }
+
+        return $clientData;
     }
 }

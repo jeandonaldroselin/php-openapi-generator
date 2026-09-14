@@ -43,7 +43,9 @@ install` — a teammate's machine, CI, a Docker build — regenerates the client
 plain `composer install` on a completely fresh checkout just works, no manual step needed.
 
 Need several clients? Add more entries to the `clients` array — one command generates and wires
-up all of them.
+up all of them. Settings like `generator_name`, `openapi_generator_version`,
+`additional_properties` and `generated_path` can be set once at the root of the file and
+overridden per client (see [EXPLANATIONS.md](EXPLANATIONS.md)).
 
 ## Options
 

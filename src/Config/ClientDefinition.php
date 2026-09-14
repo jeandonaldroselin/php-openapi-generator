@@ -19,11 +19,13 @@ final class ClientDefinition
         public readonly array $additionalProperties = [],
         public readonly array $globalProperties = [],
         public readonly ?string $packageVersion = null,
+        public readonly ?string $generatedPath = null,
     ) {
     }
 
     /**
-     * @param array<string,mixed> $data
+     * @param array<string,mixed> $data Client configuration, already merged with any root-level
+     *                                  defaults (see PackageConfigLoader) - values here win.
      */
     public static function fromArray(array $data): self
     {
@@ -44,6 +46,7 @@ final class ClientDefinition
             additionalProperties: (array) ($data['additional_properties'] ?? []),
             globalProperties: (array) ($data['global_properties'] ?? []),
             packageVersion: isset($data['package_version']) ? (string) $data['package_version'] : null,
+            generatedPath: isset($data['generated_path']) ? (string) $data['generated_path'] : null,
         );
     }
 }
