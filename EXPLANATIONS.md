@@ -159,17 +159,24 @@ The `name` (cosmetic) and `version` fields are filled in automatically since not
 openapi-generator template sets them. This file is never installed as a dependency — it exists
 purely for documentation/tooling that inspects the generated directory.
 
-## Skipping unchanged specs
+## Skipping unchanged clients
 
-Every generated client stores a parsed snapshot of the OpenAPI spec that produced it, at
-`.openapi-generator/source-spec.json` inside the generated directory. On the next run, the
-current `input_spec` is parsed and compared against that snapshot: if nothing functionally
-changed (only comments, formatting, or key order differ), generation is skipped and the code
-already in `var/` is left as-is. Use `--force` (`-f`) to regenerate regardless.
+Every generated client stores two snapshots inside its own `.openapi-generator/` directory:
 
-Only the spec's content is compared — changing `generator_name`, `openapi_generator_version` or
-`additional_properties` without touching the spec will *not* trigger a rebuild on its own; use
-`--force` after such a config change.
+- `source-spec.json` — a parsed snapshot of the OpenAPI spec that produced it.
+- `generation-config.json` — the settings that affect the generated code's *content*:
+  `generator_name`, the resolved `openapi_generator_version`, `additional_properties` and
+  `global_properties` (after merging root-level defaults with this client's own overrides - see
+  above). Settings that only affect metadata or output location (`package_name`,
+  `package_version`, `generated_path`) are not part of this, since they don't change what gets
+  generated.
+
+On the next run, both the current spec and the current (merged) generation config are compared
+against these stored snapshots: if **both** match (only comments, formatting, or key order may
+differ), generation is skipped and the code already in place is left as-is. If either changed —
+the spec itself, or a setting like `removeOperationIdPrefix` in `additional_properties`, or the
+`openapi_generator_version` - the client is regenerated. Use `--force` (`-f`) to regenerate
+regardless.
 
 ## Namespace conflict detection
 

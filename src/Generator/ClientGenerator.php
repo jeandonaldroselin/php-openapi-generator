@@ -16,20 +16,26 @@ use Symfony\Component\Process\Process;
 final class ClientGenerator
 {
     private const SPEC_SNAPSHOT_RELATIVE_PATH = '.openapi-generator/source-spec.json';
+    private const GENERATION_CONFIG_RELATIVE_PATH = '.openapi-generator/generation-config.json';
 
     /**
      * @return bool true if the client was (re)generated, false if generation was skipped
-     *              because the OpenAPI spec has not functionally changed since last time.
+     *              because neither the OpenAPI spec nor the generation config (generator_name,
+     *              openapi_generator_version, additional_properties, global_properties) have
+     *              functionally changed since last time.
      */
     public function generate(
         ClientDefinition $client,
         string $jarPath,
+        string $version,
         string $outputDir,
         string $javaBinary,
         SymfonyStyle $io,
         bool $forceRegenerate = false,
     ): bool {
         $snapshotPath = $outputDir.'/'.self::SPEC_SNAPSHOT_RELATIVE_PATH;
+        $generationConfigPath = $outputDir.'/'.self::GENERATION_CONFIG_RELATIVE_PATH;
+        $currentGenerationConfig = $this->buildGenerationConfig($client, $version);
 
         $currentSpec = null;
         try {
@@ -39,10 +45,14 @@ final class ClientGenerator
             // through and let openapi-generator-cli itself report the real error below.
         }
 
-        if (!$forceRegenerate && $currentSpec !== null && $this->matchesStoredSnapshot($currentSpec, $snapshotPath)) {
+        if (!$forceRegenerate
+            && $currentSpec !== null
+            && $this->matchesStoredJson($currentSpec, $snapshotPath)
+            && $this->matchesStoredJson($currentGenerationConfig, $generationConfigPath)
+        ) {
             $io->text(sprintf(
-                'No functional changes detected in the OpenAPI spec for client "%s" - skipping regeneration '.
-                '(keeping the client already generated at %s).',
+                'No functional changes detected in the OpenAPI spec or generation config for client "%s" - '.
+                'skipping regeneration (keeping the client already generated at %s).',
                 $client->name,
                 $outputDir
             ));
@@ -105,42 +115,60 @@ final class ClientGenerator
         $this->ensurePackageMetadata($composerJsonPath, $client, $currentSpec);
 
         if ($currentSpec !== null) {
-            $this->storeSpecSnapshot($currentSpec, $snapshotPath);
+            $this->storeJson($currentSpec, $snapshotPath);
         }
+        $this->storeJson($currentGenerationConfig, $generationConfigPath);
 
         return true;
     }
 
     /**
-     * @param array<string,mixed> $currentSpec
+     * The subset of a client's configuration that actually affects the generated code's
+     * content (as opposed to e.g. package_name/package_version/generated_path, which only
+     * affect metadata or where the output goes).
+     *
+     * @return array<string,mixed>
      */
-    private function matchesStoredSnapshot(array $currentSpec, string $snapshotPath): bool
+    private function buildGenerationConfig(ClientDefinition $client, string $version): array
     {
-        if (!is_file($snapshotPath)) {
+        return [
+            'generator_name' => $client->generatorName,
+            'generator_version' => $version,
+            'additional_properties' => $client->additionalProperties,
+            'global_properties' => $client->globalProperties,
+        ];
+    }
+
+    /**
+     * @param array<string,mixed> $current
+     */
+    private function matchesStoredJson(array $current, string $storedPath): bool
+    {
+        if (!is_file($storedPath)) {
             return false;
         }
 
-        $raw = file_get_contents($snapshotPath);
+        $raw = file_get_contents($storedPath);
         if ($raw === false) {
             return false;
         }
 
-        /** @var mixed $previousSpec */
-        $previousSpec = json_decode($raw, true);
+        /** @var mixed $stored */
+        $stored = json_decode($raw, true);
 
         // Loose comparison: same keys/values regardless of array order, so purely cosmetic
-        // changes (comments, formatting, key reordering) in the spec don't trigger a rebuild.
-        return is_array($previousSpec) && $previousSpec == $currentSpec;
+        // changes (comments, formatting, key reordering) don't trigger a rebuild.
+        return is_array($stored) && $stored == $current;
     }
 
     /**
-     * @param array<string,mixed> $spec
+     * @param array<string,mixed> $data
      */
-    private function storeSpecSnapshot(array $spec, string $snapshotPath): void
+    private function storeJson(array $data, string $path): void
     {
-        (new Filesystem())->mkdir(dirname($snapshotPath));
-        $json = json_encode($spec, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
-        file_put_contents($snapshotPath, $json);
+        (new Filesystem())->mkdir(dirname($path));
+        $json = json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        file_put_contents($path, $json);
     }
 
     /**

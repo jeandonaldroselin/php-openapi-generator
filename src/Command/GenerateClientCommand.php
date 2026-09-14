@@ -106,6 +106,7 @@ final class GenerateClientCommand extends Command
                 $generator->generate(
                     $client,
                     $jarPath,
+                    $version,
                     $outputDir,
                     $javaBinary,
                     $io,
