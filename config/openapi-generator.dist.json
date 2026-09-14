@@ -1,11 +1,11 @@
 {
+    "generator_name": "php",
+    "openapi_generator_version": "7.9.0",
     "clients": [
         {
             "name": "billing",
             "input_spec": "https://api.example.com/openapi.yaml",
-            "generator_name": "php",
             "package_name": "acme/billing-client",
-            "openapi_generator_version": "7.9.0",
             "additional_properties": {
                 "invokerPackage": "Acme\\Billing\\Client"
             },

@@ -77,7 +77,7 @@ final class PackageConfigLoader
 
         // generated_path is a base directory, not a literal path to reuse as-is: a root-level
         // default gives each client its own "<root generated_path>/<client name>" subdirectory,
-        // same as the built-in default (var/openapi-generator/generated/<name>) - unless the
+        // same as the built-in default (.generated/<name>) - unless the
         // client sets its own generated_path, which is then used verbatim.
         if (!array_key_exists('generated_path', $clientData)
             && isset($rootDefaults['generated_path'])

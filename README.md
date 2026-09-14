@@ -31,12 +31,15 @@ composer require --dev jeandonaldroselin/php-openapi-generator
 vendor/bin/generate-client
 ```
 
-That's it — the client is generated into `var/openapi-generator/generated/billing/`, autoloaded
-via your project's own `composer.json`, ready to use:
+That's it — the client is generated into `.generated/billing/`, autoloaded via your project's own
+`composer.json`, ready to use:
 
 ```php
 use Acme\Billing\Client\Api\InvoicesApi;
 ```
+
+Add `.generated/` to your project's `.gitignore` — it's a build artifact regenerated from your
+spec(s), not something to commit.
 
 This also registers a `post-install-cmd`/`post-update-cmd` script, so any future `composer
 install` — a teammate's machine, CI, a Docker build — regenerates the client automatically. A

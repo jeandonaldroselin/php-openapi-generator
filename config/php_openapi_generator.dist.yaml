@@ -6,8 +6,9 @@ php_openapi_generator:
     # Where openapi-generator-cli.jar files are cached between runs.
     cache_dir: 'var/openapi-generator/cache'
 
-    # Where generated client code is written before being installed into vendor/.
-    generated_dir: 'var/openapi-generator/generated'
+    # Where generated client code is written. Not installed into vendor/ - add this directory
+    # to your project's .gitignore.
+    generated_dir: '.generated'
 
     # Binary used to run the generator jar.
     java_binary: 'java'
